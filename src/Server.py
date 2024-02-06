@@ -59,6 +59,7 @@ class ServerSocket(threading.Thread):
 				socketType=socket.SOCK_STREAM,
 				socketProto=-1,
 				socketfileno=None,
+				bufferSize = 128,
 				threadGroup=None,
 				threadTarget=None,
 				threadName=None,
@@ -71,6 +72,7 @@ class ServerSocket(threading.Thread):
 		self._args = threadArgs
 		self._kwargs = threadKwargs
 		self._socketInfos = (socketFamily, socketType, socketProto, socketfileno)
+		self._bufferSize = bufferSize
 		try:
 			self._socket = socket.socket(*self._socketInfos)
 			self._socket.settimeout(1)
@@ -102,11 +104,19 @@ class ServerSocket(threading.Thread):
 		"""
         Closes the socket.
 		"""
+		if not self._open:
+			self._logger.info("The server is already closed")
+			return
 		self._logger.info("Closing connexion...")
 		self._socket.close()
 		self._socketOpen = False
 		self._socket = socket.socket(*self._socketInfos)
 		self._logger.info("Server connexion closed")
+
+	
+	def isRunning(self):
+		"""Returns True if the server is running."""
+		return self._running
     
     
 	def _accept(self) -> None:
@@ -119,18 +129,25 @@ class ServerSocket(threading.Thread):
 				self._connectedSocket = (conn, addr)
 				self._logger.info("Accepted connexion from %s:%i", addr[0], addr[1])
 			except socket.timeout:
-				self._logger.debug("Timeout")
+				# self._logger.debug("Timeout")
 				continue
 			except Exception as e:
 				raise e
 
 
 	def _receiveData(self) -> bytes:
-		newData = self._connectedSocket[0].recv(self._kwargs["bufferSize"])
+		"""
+		Receives data from the client.
+		"""
+		self._logger.debug("Receiving data...")
+		newData = self._connectedSocket[0].recv(self._bufferSize)
+		self._logger.debug(" -> [{}] {}".format(len(newData), newData))
 		allData = newData
-		while newData != b'':
-			newData = self._connectedSocket[0].recv(self._kwargs["bufferSize"])
+		while len(newData) >= self._bufferSize:
+			newData = self._connectedSocket[0].recv(self._bufferSize)
+			self._logger.debug(" -> [{}] {}".format(newData))
 			allData += newData
+		self._logger.debug(f"All received data : {allData}")
 		return allData
 	
 
@@ -138,10 +155,13 @@ class ServerSocket(threading.Thread):
 		"""
 		Sends some data to the client.
 		"""
+		self._logger.debug("Sending data...")
 		try:
-			self._socket.sendall(data)
+			self._connectedSocket[0].sendall(data)
 		except Exception as e:
 			self._logger.error("Error while sending data : %s", e)
+		else:
+			self._logger.debug("Data successfully sent")
 		
 
 
@@ -153,8 +173,17 @@ class ServerSocket(threading.Thread):
 			if self._connectedSocket == None: # TODO : Maybe @await ?
 				self._logger.debug("Looking for a connexion")
 				self._accept()
-			else:
-				time.sleep(1)
+				continue
+
+			self._sendData(bytes("i"*512, encoding="utf-8"))
+			self._receiveData()
+
+			self._logger.info("Closing connexion with %s:%i", self._connectedSocket[1][0], self._connectedSocket[1][1])
+			self._connectedSocket[0].close()
+			self._connectedSocket = None
+
+			self.stop()
+		
 
 		# receivedFileData = self._receiveData().decode()
 		# fileName, fileExtension = receivedFileData.split("*SEPARATOR*")
@@ -175,7 +204,7 @@ class ServerSocket(threading.Thread):
 		self._close()
 
 
-	def close(self):
+	def stop(self):
 		"""
 		Closes the server.
 		"""
@@ -201,23 +230,6 @@ class ServerSocket(threading.Thread):
 	# 		"bufferSize": bufferSize
 	# 	}
 	# 	self.start()
-		
-
-	def tmp(self, data):
-		# self.start()
-		dataSent = False
-		self._logger.debug("Sending : waiting for connexion.")
-		while not dataSent:
-			if self._connectedSocket == None:
-				time.sleep(1)
-				continue
-			else:
-				self._logger.debug("Sending : found a connexion. Sending data.")
-				self._sendData(data)
-				dataSent = True
-				self._logger.debug("Sending : data sent.")
-		print(self._receiveData())
-		self.close()
 
 
 
@@ -230,8 +242,7 @@ if __name__ == "__main__":
 
 	server = ServerSocket(("192.168.1.1", 16384), logger=serverLogger, threadName="ServerThread")
 	server.start()
-	# server.join()
+	server.join()
 
-	# server.tmp("test string")
-
-	server.close()
+	if server.isRunning():
+		server.stop()
