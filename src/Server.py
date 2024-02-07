@@ -17,7 +17,6 @@
 # Libraries used for this application.
 import logging
 import threading
-import time
 import socket
 
 
@@ -33,8 +32,6 @@ pass
 # **************************************** VARIABLES ****************************************
 # ===========================================================================================
 # Variable declaration/definition
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): %(message)s", datefmt="%H:%M:%S"))
 
 
 
@@ -43,9 +40,9 @@ handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): 
 # ===========================================================================================
 # Variable declaration/definition
 
-class ServerSocket(threading.Thread):
+class Server(threading.Thread):
 	"""
-    Represents a client-side socket.
+    Represents a server-side socket.
     For the parameters not mentionned here, check the socket.socket parameters.
     
     :param address: the address of the socket, first the ipv4, second the port
@@ -80,7 +77,6 @@ class ServerSocket(threading.Thread):
 			raise e
 		self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		self._socketOpen = False
-		self._running = False
 		self._connectedSocket = None
 		self._logger = logger
     
@@ -116,7 +112,7 @@ class ServerSocket(threading.Thread):
 	
 	def isRunning(self):
 		"""Returns True if the server is running."""
-		return self._running
+		return self._socketOpen
     
     
 	def _accept(self) -> None:
@@ -166,81 +162,45 @@ class ServerSocket(threading.Thread):
 
 
 	def run(self) -> None:
-		self._running = True
 		self._open()
 		
-		while self._running:
-			if self._connectedSocket == None: # TODO : Maybe @await ?
-				self._logger.debug("Looking for a connexion")
-				self._accept()
-				continue
+		while self._connectedSocket == None: # TODO : Maybe @await ?
+			self._logger.debug("Looking for a connexion")
+			self._accept()
+			continue
 
-			self._sendData(bytes("i"*512, encoding="utf-8"))
-			self._receiveData()
 
+	def stop(self) -> None:
+		"""
+		Closes the server.
+		"""
+		if self._connectedSocket:
 			self._logger.info("Closing connexion with %s:%i", self._connectedSocket[1][0], self._connectedSocket[1][1])
 			self._connectedSocket[0].close()
 			self._connectedSocket = None
 
-			self.stop()
-		
-
-		# receivedFileData = self._receiveData().decode()
-		# fileName, fileExtension = receivedFileData.split("*SEPARATOR*")
-		# self._logger.info("File received (data) : %s.%s", fileName, fileExtension)
-
-		# self._logger.debug("sending : file ok")
-		# self._connectedSocket[0].sendall(b"file ok")
-		# self._logger.debug("sent")
-
-		# self._logger.debug("receiving file")
-		# receivedFile = self._receiveData()
-		# self._logger.debug("file received")
-		# self._close()
-
-		# filePath = path.join(self._kwargs["downloadsPath"], "%s.%s" % (fileName, fileExtension))
-		# files.saveFile(receivedFile, filePath, binary=True)
-
+		self._logger.info("Closing the server.")
 		self._close()
 
 
-	def stop(self):
+	def sendCommand(self, command: str, *args, **kwargs) -> None:
 		"""
-		Closes the server.
+		Sends a command to the board.
 		"""
-		self._logger.info("Closing the server.")
-		self._running = False
-        
-    
-
-	# def receiveFile(self, downloadsPath=None, bufferSize=2048) -> None:
-	# 	"""
-	# 	Receives a file.
-
-	# 	:param str downloadsPath: the path to where the file has to be saved
-	# 	:param int bufferSize: the size of the buffer, default 2048
-	# 	"""
-	# 	if self._socketOpen: raise socket.error("the socket is already listening an address")
-	# 	if not downloadsPath:
-	# 		downloadsPath = "downloads"
-	# 	if not path.isdir(downloadsPath):
-	# 		makedirs(downloadsPath)
-	# 	self._kwargs |= {
-	# 		"downloadsPath": downloadsPath,
-	# 		"bufferSize": bufferSize
-	# 	}
-	# 	self.start()
+		pass
 
 
 
 
 
 if __name__ == "__main__":
+	handler = logging.StreamHandler()
+	handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): %(message)s", datefmt="%H:%M:%S"))
 	serverLogger = logging.Logger("Server")
 	serverLogger.setLevel(logging.DEBUG)
 	serverLogger.addHandler(handler)
 
-	server = ServerSocket(("192.168.1.1", 16384), logger=serverLogger, threadName="ServerThread")
+	server = Server(("192.168.1.1", 16384), logger=serverLogger, threadName="ServerThread")
 	server.start()
 	server.join()
 
