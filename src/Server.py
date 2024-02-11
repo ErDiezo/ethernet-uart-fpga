@@ -18,6 +18,9 @@
 import logging
 import threading
 import socket
+import os
+from datetime import datetime
+from typing import List
 
 
 
@@ -33,6 +36,9 @@ pass
 # ===========================================================================================
 # Variable declaration/definition
 
+# Logs
+logsFiles = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
+# logsFiles = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
 
 
 # ===========================================================================================
@@ -51,7 +57,7 @@ class Server(threading.Thread):
     :type logger: logging.Logger
 	"""
 	def __init__(self,
-				address: [str, int],
+				address: List[str, int],
 				socketFamily=socket.AF_INET,
 				socketType=socket.SOCK_STREAM,
 				socketProto=-1,
@@ -194,6 +200,9 @@ class Server(threading.Thread):
 
 
 if __name__ == "__main__":
+	logsFiles = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
+	# logsFiles = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
+
 	handler = logging.StreamHandler()
 	handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): %(message)s", datefmt="%H:%M:%S"))
 	serverLogger = logging.Logger("Server")
