@@ -164,3 +164,7 @@ cython_debug/
 
 # logs
 logs/
+
+# others
+do-not-include/
+*tmp*

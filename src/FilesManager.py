@@ -51,14 +51,16 @@ COLORS = {
 		"text" : 0,
 		"file" : 0,
 		"dir" : 1,
-		"path" : 2
+		"path" : 3, # Same as alert
+		"alert" : 3
 	},
 	# The objects used to display some text. Defined here for more clarity
 	"curses" : {
 		"text" : None,
 		"file" : None,
 		"dir" : None,
-		"path" : None
+		"path" : None,
+		"alert" : None
 	}
 }
 
@@ -98,13 +100,18 @@ class FilesManager(threading.Thread):
 		self._currentDir = os.getcwd()
 		self._files = sorted(os.listdir(self._currentDir))
 		self._selectedIndex = 0
+		self._offset = 0
+		self._availableLines = 0
+		self._height, self._width = 0, 0
+		self._chosenFile = None
 
 
-	def run(self) -> None:
+	def run(self) -> str:
 		"""
 		This function is almost a copy/paste of the curses.wrapper function (see https://github.com/python/cpython/blob/3.12/Lib/curses/__init__.py).
 		Doing this allows the curses environment to be used inside of a threaded class.
 		It only initializes the curses envrionment. The main function is _mainLoop.
+		However, it returns the path to the selected file.
 		"""
 
 		self._logger.info("Starting files manager")
@@ -135,12 +142,16 @@ class FilesManager(threading.Thread):
 		
 		self._logger.info("Files manager started. Start of the main loop")
 
-		self._mainLoop()
+		try:
+			return self._mainLoop()
+		except curses.error as e:
+			filesManagerLogger.error("The terminal might be too small. Try to make it bigger (Error : %s)", e)
 
 
-	def _mainLoop(self) -> None:
+	def _mainLoop(self) -> str:
 		"""
 		The mainloop of the curses envrionment.
+		It returns the path to the selected file.
 		"""
 		
 		# Hide the cursor
@@ -160,14 +171,19 @@ class FilesManager(threading.Thread):
 				self._alert("test")
 			elif key == curses.KEY_UP and self._selectedIndex > 0: # Navigate threw the tree
 				self._selectedIndex -= 1
+				if (self._selectedIndex < self._offset):
+					self._offset -= 1
 			elif key == curses.KEY_DOWN and self._selectedIndex < len(self._files) - 1: # Navigate threw the tree
 				self._selectedIndex += 1
+				if (self._selectedIndex > self._availableLines - 1 + self._offset):
+					self._offset += 1
 			elif key == curses.KEY_LEFT:
 				self._changeDir(os.path.dirname(self._currentDir))
 			elif key == curses.KEY_RIGHT:
-				self._onEnterPress()
+				self._onKeyRight()
 			elif key == curses.KEY_ENTER or key == 10 or key == 13: # ENTER or \n or \r
-				self._onEnterPress()
+				if self._onEnterPress():
+					break
 			# TODO : one key to press to enter the full path with the keyboard
 
 			self._display()
@@ -179,6 +195,10 @@ class FilesManager(threading.Thread):
 		curses.echo()
 		curses.nocbreak()
 		curses.endwin()
+
+		if self._chosenFile:
+			self._logger.info("File chosen : %s", self._chosenFile)
+		return self._chosenFile
 	
 
 	def _initializeColors(self) -> None:
@@ -191,7 +211,7 @@ class FilesManager(threading.Thread):
 		# Creates pairs linked to an integer
 		# They represent the foreground color, then the background color
 		curses.init_pair(COLORS["index"]["dir"], curses.COLOR_CYAN, curses.COLOR_BLACK) # Directory
-		curses.init_pair(COLORS["index"]["path"], curses.COLOR_RED, curses.COLOR_BLACK) # Path
+		curses.init_pair(COLORS["index"]["alert"], curses.COLOR_RED, curses.COLOR_BLACK) # Alert
 
 		# Match the color object on the color pair
 		# These are the objects used when displaying some text
@@ -199,6 +219,7 @@ class FilesManager(threading.Thread):
 		COLORS["curses"]["file"] = curses.color_pair(COLORS["index"]["file"])
 		COLORS["curses"]["dir"] = curses.color_pair(COLORS["index"]["dir"])
 		COLORS["curses"]["path"] = curses.color_pair(COLORS["index"]["path"])
+		COLORS["curses"]["alert"] = curses.color_pair(COLORS["index"]["alert"])
 
 		# ********** Alert colors **********
 		
@@ -220,7 +241,7 @@ class FilesManager(threading.Thread):
 		self._stdscr.clear()
 		height, width = self._stdscr.getmaxyx()
 
-		# Header
+		# ---------- Header ----------
 		headerLines = 2
 		self._stdscr.addstr(0, 0, "path :", COLORS["curses"]["text"])
 		# If too large for the screen (size of "path : ..." + 1), shortens the path
@@ -230,7 +251,7 @@ class FilesManager(threading.Thread):
 			self._stdscr.addstr(0, 7, "...{}".format(self._currentDir[len(self._currentDir)-width+11:]), COLORS["curses"]["path"])
 		self._drawHorizontalLine(1)
 
-		# Footer
+		# ---------- Footer ----------
 		footerLines = 2
 		self._drawHorizontalLine(height-2)
 		footer = "[q] Quit    [<] Go out    [>] Go in    [ENTER] Send file"
@@ -239,30 +260,34 @@ class FilesManager(threading.Thread):
 		else:
 			self._stdscr.addstr(height-1, 0, "[q]    [<]    [>]    [ENTER]", COLORS["curses"]["text"])
 
-		# Main
-		# TODO : scroll the list if the cursor is in the bottom of the list
-		for idx, file in enumerate(self._files):
-			if idx >= height - (headerLines + footerLines):
-				continue
-			currentFile = os.path.join(self._currentDir, file)
+		# ---------- Main ----------
+		self._availableLines = height - headerLines - footerLines
+		# The offset allows to scrool the list if it is too long to be shown in the entire screen
+		offset = max(0, self._selectedIndex - self._availableLines + 1)
+		for i in range(min(len(self._files), self._availableLines)):
+			currentFile = os.path.join(self._currentDir, self._files[i + self._offset])
 			if os.path.isdir(currentFile):
-				self._stdscr.addstr(idx + headerLines, 0, file, COLORS["curses"]["dir"] | curses.A_BOLD | curses.A_REVERSE*(idx==self._selectedIndex))
+				self._stdscr.addstr(i + headerLines, 0, self._files[i + self._offset], COLORS["curses"]["dir"] | curses.A_BOLD | curses.A_REVERSE*((i + self._offset)==self._selectedIndex))
 			else:
-				self._stdscr.addstr(idx + headerLines, 0, file, COLORS["curses"]["file"] | curses.A_REVERSE*(idx==self._selectedIndex))
+				self._stdscr.addstr(i + headerLines, 0, self._files[i + self._offset], COLORS["curses"]["file"] | curses.A_REVERSE*((i + self._offset)==self._selectedIndex))
 
 		self._stdscr.refresh()
 	
 
-	def _alert(self, text) -> bool:
+	def _alert(self,
+			subText1 = "Do you really want to send this file?",
+			subText1Replacement = "Send this file?",
+			subText2 = ""
+			) -> bool:
 		"""
 		This function is used to display an alert in the center of the screen
 		"""
 
 		response = False
 
-		nLines = len(text) + 8 # + 2 (borders) + 2*3 for padding
-		nCols = 4
 		oldHeight, oldWidth = self._stdscr.getmaxyx()
+		nLines = 7 # 5 lines + 2 for borders
+		nCols = min(oldWidth, max(len(subText1) + 4, len(subText1) + 2, len(subText2))) # + 2 for borders + 2 for padding
 
 		xMin = (oldWidth - nCols) // 2
 		yMin = (oldHeight - nLines) // 2
@@ -273,35 +298,66 @@ class FilesManager(threading.Thread):
 
 			alertWin.clear()
 
-			for i in range(nLines):
-				alertWin.addstr(i, 0, " "*(nCols-1), curses.A_REVERSE)
+			# All the lines to show
+			alertWin.addstr(1, (nCols - 5) // 2, "ALERT", curses.A_BOLD | COLORS["curses"]["alert"])
+			if nCols >= len(subText1) + 2:
+				alertWin.addstr(2, (nCols - len(subText1)) // 2, subText1)
+			else:
+				alertWin.addstr(2, (nCols - len(subText1Replacement)) // 2, subText1Replacement)
+			alertWin.addstr(3, (nCols - len(subText2)) // 2, subText2, curses.A_ITALIC)
+			# Empty line
+			alertWin.addstr(5, (nCols - 2) // 3, "No", curses.A_REVERSE*(not response))
+			alertWin.addstr(5, (nCols - 3) // 3 * 2, "Yes", curses.A_REVERSE*response)
 
-			alertWin.border() # Border included in the window size. Example for 3x2 : +-+
-							  # 													  +-+
+			alertWin.border() # Border included in the window size.
 
 			alertWin.refresh()
 
 			key = self._stdscr.getch()
 
 			if key == ord('q'):
+				response = False
+				break
+			elif key == ord('n'):
+				response = False
+				break
+			elif key == ord('y'):
+				response = True
+				break
+			elif key == curses.KEY_RIGHT:
+				response = True
+			elif key == curses.KEY_LEFT:
+				response = False
+			elif key == curses.KEY_ENTER or key == 10 or key == 13: # ENTER or \n or \r
 				break
 		
 		return response
 
-		
-	def _onEnterPress(self) -> None:
+	
+	def _onKeyRight(self) -> None:
+		"""
+		Defines what happens when the user press the right key.
+		"""
+
+		currentFile = os.path.join(self._currentDir, self._files[self._selectedIndex])
+		if os.path.isdir(currentFile):
+			self._changeDir(currentFile)
+
+
+	def _onEnterPress(self) -> bool:
 		"""
 		Defines what happens when the user press the ENTER key.
+		Returns the path to the file if a file is selected.
 		"""
-		
-		if self._files[self._selectedIndex] == ".":
-			self._files = [".", ".."] + sorted(os.listdir(self._currentDir))
-		elif self._files[self._selectedIndex] == "..":
-			self._changeDir(os.path.dirname(self._currentDir))
-		else:
-			currentFile = os.path.join(self._currentDir, self._files[self._selectedIndex])
-			if os.path.isdir(currentFile):
-				self._changeDir(currentFile)
+
+		currentFile = os.path.join(self._currentDir, self._files[self._selectedIndex])
+		if os.path.isdir(currentFile):
+			self._changeDir(currentFile)
+		elif self._alert(subText2 = self._files[self._selectedIndex]):
+			self._chosenFile = currentFile
+			return True
+
+		return False
 
 
 	def _changeDir(self, dirPath: str) -> None:
@@ -310,6 +366,7 @@ class FilesManager(threading.Thread):
 		"""
 		self._currentDir = dirPath
 		self._selectedIndex = 0
+		self._offset = 0
 		self._files = sorted(os.listdir(self._currentDir))
 		self._logger.debug("Current directory changed : %s", self._currentDir)
 		
@@ -318,10 +375,10 @@ class FilesManager(threading.Thread):
 
 
 if __name__ == "__main__":
-	# logsFiles = os.path.join("logs", "FilesManager_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
-	logsFiles = os.path.join("logs", "FilesManager_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
+	# logFile = os.path.join("logs", "FilesManager_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
+	logFile = os.path.join("logs", "FilesManager_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
 
-	handler = logging.FileHandler(logsFiles)
+	handler = logging.FileHandler(logFile)
 	handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): %(message)s", datefmt="%H:%M:%S"))
 	
 	filesManagerLogger = logging.Logger("FilesManager")
