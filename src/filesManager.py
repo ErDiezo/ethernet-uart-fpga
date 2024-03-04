@@ -19,11 +19,9 @@ import logging
 import threading
 
 import curses
-from curses.textpad import rectangle
 
 import os
 from datetime import datetime
-from typing import List
 
 
 
@@ -40,8 +38,8 @@ pass
 # Variable declaration/definition
 
 # Logs
-logsFiles = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
-# logsFiles = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
+logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
+# logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
 
 # Defining the colors used by the environment. Each color is matched to an integer, and has its proper object
 # (see the funciont _initializeColors in the FilesManager class)
@@ -105,6 +103,8 @@ class FilesManager(threading.Thread):
 		self._height, self._width = 0, 0
 		self._chosenFile = None
 
+		self._running = False
+
 
 	def run(self) -> str:
 		"""
@@ -153,6 +153,7 @@ class FilesManager(threading.Thread):
 		The mainloop of the curses envrionment.
 		It returns the path to the selected file.
 		"""
+		self._running = True
 		
 		# Hide the cursor
 		curses.curs_set(0)
@@ -160,7 +161,7 @@ class FilesManager(threading.Thread):
 		# Display before starting the loop
 		self._display()
 
-		while True:
+		while self._running:
 			# Get the key pressed
 			key = self._stdscr.getch()
 
@@ -371,6 +372,12 @@ class FilesManager(threading.Thread):
 		self._logger.debug("Current directory changed : %s", self._currentDir)
 		
 
+	def stop(self) -> None:
+		"""
+		Stops the files manager.
+		"""
+		self._running = False
+
 
 
 
@@ -380,9 +387,9 @@ if __name__ == "__main__":
 
 	handler = logging.FileHandler(logFile)
 	handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): %(message)s", datefmt="%H:%M:%S"))
+	handler.setLevel(logging.DEBUG)
 	
 	filesManagerLogger = logging.Logger("FilesManager")
-	filesManagerLogger.setLevel(logging.DEBUG)
 	filesManagerLogger.addHandler(handler)
 
 	filesManager = FilesManager(logger=filesManagerLogger)

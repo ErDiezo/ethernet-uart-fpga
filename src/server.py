@@ -20,7 +20,6 @@ import threading
 import socket
 import os
 from datetime import datetime
-from typing import List
 
 
 
@@ -37,8 +36,8 @@ pass
 # Variable declaration/definition
 
 # Logs
-logsFiles = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
-# logsFiles = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
+logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
+# logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
 
 
 # ===========================================================================================
@@ -69,7 +68,7 @@ class Server(threading.Thread):
 				threadArgs=list(),
 				threadKwargs=dict(),
 				threadDaemon=None,
-				logger=None):
+				logger=None) -> None:
 		
 		super().__init__(group=threadGroup, target=threadTarget, name=threadName, daemon=threadDaemon)
 
@@ -100,7 +99,8 @@ class Server(threading.Thread):
 			self._socket.bind(self._address)
 			self._socket.listen(1)
 		except Exception as e:
-			self._logger.error("Error while opening the connexion: %s\nSocket not opened.", e)
+			self._logger.error("Error while opening the connexion on %s:%d: %s. Socket not opened.", self._address[0], self._address[1], e)
+			raise e
 		else:
 			self._serverOpen = True
 			self._logger.info("Server connexion opened. Listening on %s:%i", self._address[0], self._address[1])
@@ -125,17 +125,17 @@ class Server(threading.Thread):
 		"""
 		Accepts a connexion.
 		"""
+		self._connectedSocket = None
 
-		while self._connectedSocket == None:
+		while self._serverOpen and self._connectedSocket == None:
 			try:
 				conn, addr = self._socket.accept()
 				self._connectedSocket = [conn, addr]
 				self._logger.info("Accepted connexion from %s:%d", addr[0], addr[1])
 			except socket.timeout:
-				# self._logger.debug("Timeout")
 				continue
-			except Exception as e:
-				raise e
+			except OSError:
+				continue
 
 
 	def _receiveData(self) -> bytes:
@@ -149,11 +149,11 @@ class Server(threading.Thread):
 		while len(newData) >= self._bufferSize:
 			newData = self._connectedSocket[0].recv(self._bufferSize)
 			allData += newData
-		if allData: self._receiveData.append(allData)
+		if allData: self._receivedData.append(allData)
 		return allData
 	
 
-	def sendCommand(self, hw: int, cmd: int, info: int=0) -> bytes:
+	def sendCommand(self, hw: int, cmd: int, info: int=0) -> None:
 		"""
 		Sends a command to the client, then receive the response from it that is added to the variable and returned.
 		hw is an integer between 0 and 1.
@@ -167,7 +167,6 @@ class Server(threading.Thread):
 			return
 
 		self._sendCommand(hw, cmd, info)
-		return self._receiveData()
 	
 
 	def _sendCommand(self, hw: int, cmd: int, info: int=0) -> None:
@@ -177,16 +176,22 @@ class Server(threading.Thread):
 		cmd is an integer between 0 and 7.
 		info is an integer between 0 and 15.
 		"""
+		# Verifying a client is connected
+		if not self._connectedSocket:
+			raise socket.error("No client is connected")
 		
 		# Verifying the given parameters
 		if not isinstance(hw, int) or (hw != 0 and hw != 1):
 			self._logger.error("Error while sending command (%d %d %d) : hw has to be 0 or 1.", hw, cmd, info)
+			raise socket.error("hw has to be 0 or 1")
 			return
 		if not isinstance(cmd, int) or cmd < 0 or cmd > 7:
 			self._logger.error("Error while sending command (%d %d %d) : cmd has to be an integer between 0 and 7 included.", hw, cmd, info)
+			raise socket.error("cmd has to be an integer between 0 and 7 included")
 			return
 		if not isinstance(info, int) or info < 0 or info > 15:
 			self._logger.error("Error while sending command (%d %d %d) : info has to be an integer between 0 and 15 included.", hw, cmd, info)
+			raise socket.error("info has to be an integer between 0 and 15 included")
 			return
 		
 		# Setting the data to send
@@ -197,7 +202,8 @@ class Server(threading.Thread):
 			if __name__ != "__main__":
 				self._connectedSocket[0].sendall(toSend)
 		except Exception as e:
-			self._logger.error("Error while sending command : %s", e)
+			self._logger.error("Error while sending command (%d %d %d): %s", hw, cmd, info, e)
+			raise socket.error(e)
 		else:
 			self._logger.info("Command %s sent", "".join([format(byte, '08b') for byte in toSend]))
 	
@@ -212,7 +218,7 @@ class Server(threading.Thread):
 		# Verifying if the file is really a file
 		if not os.path.isfile(path):
 			self._logger.error("%s is not a file. Nothing was sent", path)
-			return
+			raise FileNotFoundError("{} is not a file. Nothing was sent".format(path))
 		
 		self._logger.info("Sending file %s", path)
 
@@ -226,15 +232,15 @@ class Server(threading.Thread):
 					# The function bytes(...) converts the 1 (HW + CMD) for the higher 4 bits
 					# and the info (0..7) for the lower 4 bits into a byte.
 					# Then the data to send is concatenated, and all is sent.
-					toSend = bytes([(1 << 4) | info]) + readData
-					self._connectedSocket.sendall(bytes([(1 << 4) | info]) + toSend)
+					self._connectedSocket[0].sendall(bytes([(1 << 4) | info]) + readData)
 					amountOfDataSent += len(readData)
 
 					readData = file.read(self._bufferSize - 1) # -1 for the command part
 		except Exception as e:
 			self._logger.error("Error while sending data (still %do sent) : %s", amountOfDataSent, e)
+			raise socket.error(e)
 		else:
-			self._logger.info("Data sent (%do)", bin(amountOfDataSent))
+			self._logger.info("Data sent (%do)", amountOfDataSent)
 
 
 	def run(self) -> None:
@@ -250,10 +256,10 @@ class Server(threading.Thread):
 				continue
 
 			# Asks the identification to the client
-			if not self._askIdentification():
+			if not self.askIdentification():
 				self._connectedSocket[0].close()
-				self._connectedSocket = []
 				self._logger.info("The connexion with %s:%d was closed because the client did not match the identification", self._connectedSocket[1][0], self._connectedSocket[1][1])
+				self._connectedSocket = None
 				continue
 
 			# Check if the connexion is still open
@@ -262,8 +268,8 @@ class Server(threading.Thread):
 
 			# The connexion has been closed -> reset
 			self._connectedSocket[0].close()
-			self._connectedSocket = []
 			self._logger.info("%s:%d disconnected", self._connectedSocket[1][0], self._connectedSocket[1][1])
+			self._connectedSocket = None
 
 
 	def stop(self) -> None:
@@ -280,12 +286,13 @@ class Server(threading.Thread):
 		self._close()
 
 
-	def _askIdentification(self) -> bool:
+	def askIdentification(self) -> bool:
 		"""
 		Asks the identification to the client, then checks it. 
 		"""
 
 		self._sendCommand(0, 0, 0) # Identification
+		identification = self._receiveData()
 		identification = self._receiveData()
 		
 		# Checks the identification
@@ -303,6 +310,13 @@ class Server(threading.Thread):
 
 		return self._receivedData
 
+
+	def getAddress(self) -> tuple:
+		"""
+		Returns the address that the server listens to in the form (adrr, port)
+		"""
+		return self._address
+
 	
 	def isRunning(self):
 		"""
@@ -317,13 +331,14 @@ class Server(threading.Thread):
 
 if __name__ == "__main__":
 	import time
-	# logFile = os.path.join("logs", "Server_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
-	logFile = os.path.join("logs", "Server_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
+	# logsFile = os.path.join("logs", "Server_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
+	logsFile = os.path.join("logs", "Server_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
 
-	handler = logging.FileHandler(logFile)
+	handler = logging.FileHandler(logsFile)
 	handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): %(message)s", datefmt="%H:%M:%S"))
+	handler.setLevel(logging.DEBUG)
+
 	serverLogger = logging.Logger("Server")
-	serverLogger.setLevel(logging.DEBUG)
 	serverLogger.addHandler(handler)
 
 	server = Server(("0.0.0.0", 16384), logger=serverLogger, threadName="ServerThread")
