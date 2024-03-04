@@ -163,6 +163,8 @@ class ProgramManager(threading.Thread):
 				self._logger.warning("Could not send the command %s %s : %s", command, " ".join(args), e)
 			else:
 				self._logger.debug("%s %s command executed", command, " ".join(args))
+		
+		self._logger.info("Program manager closed")
 
 
 	def stop(self) -> None:
@@ -175,8 +177,6 @@ class ProgramManager(threading.Thread):
 		self._displayDataRunning = False
 		self._filesManager.stop()
 		self._server.stop()
-
-		self._logger.info("Data manager closed")
 
 
 	def _displayData(self, displayFunction = print) -> list:
@@ -227,6 +227,7 @@ class ProgramManager(threading.Thread):
 			
 			if displayFunction == print:
 				displayFunction("> ", end="")
+			continue
 
 
 

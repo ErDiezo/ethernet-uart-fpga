@@ -46,7 +46,8 @@ from programManager import ProgramManager, isValidIpv4
 logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
 
 # Default IP address
-DEFAULT_ADDR = "0.0.0.0" # "192.168.1.1"
+# DEFAULT_ADDR = "192.168.1.1"
+DEFAULT_ADDR = "0.0.0.0"
 DEFAULT_PORT = 16384
 
 
@@ -54,6 +55,8 @@ DEFAULT_PORT = 16384
 
 
 if __name__ == "__main__":
+	if os.path.isfile(sys.argv[1]):
+		logsFile = sys.argv[1]
 
 	handler = logging.FileHandler(logsFile)
 	handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): %(message)s", datefmt="%H:%M:%S"))
