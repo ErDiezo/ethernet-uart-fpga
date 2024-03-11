@@ -21,6 +21,8 @@ import socket
 import os
 from datetime import datetime
 
+import time
+
 
 
 # ===========================================================================================
@@ -130,10 +132,14 @@ class Server(threading.Thread):
 		while self._serverOpen and self._connectedSocket == None:
 			try:
 				conn, addr = self._socket.accept()
+				conn.setblocking(0)
 				self._connectedSocket = [conn, addr]
 				self._logger.info("Accepted connexion from %s:%d", addr[0], addr[1])
 			except socket.timeout:
-				continue
+				if self._serverOpen:
+					continue
+				else:
+					return
 			except OSError:
 				continue
 
@@ -143,13 +149,22 @@ class Server(threading.Thread):
 		Receives data from the client.
 		The received data is stored in the _receivedData variable then returned.
 		"""
-
-		newData = self._connectedSocket[0].recv(self._bufferSize)
-		allData = newData
-		while len(newData) >= self._bufferSize:
+		try:
 			newData = self._connectedSocket[0].recv(self._bufferSize)
-			allData += newData
-		if allData: self._receivedData.append(allData)
+			allData = newData
+			while len(newData) >= self._bufferSize:
+				newData = self._connectedSocket[0].recv(self._bufferSize)
+				allData += newData
+		except BlockingIOError:
+			return None
+		
+		if allData == b"\xff":
+			# The connexion has been closed -> reset
+			self._connectedSocket[0].close()
+			self._logger.info("%s:%d disconnected", self._connectedSocket[1][0], self._connectedSocket[1][1])
+			self._connectedSocket = None
+		elif allData:
+			self._receivedData.append(allData)
 		return allData
 	
 
@@ -248,28 +263,22 @@ class Server(threading.Thread):
 		
 		# TODO : Maybe @await ?
 		while self._serverOpen: # Server open
-			# Looking for a connexion
-			self._logger.debug("Looking for a connexion")
-			self._accept()
-
+			
 			if not self._connectedSocket:
-				continue
-
-			# Asks the identification to the client
-			if not self.askIdentification():
-				self._connectedSocket[0].close()
-				self._logger.info("The connexion with %s:%d was closed because the client did not match the identification", self._connectedSocket[1][0], self._connectedSocket[1][1])
-				self._connectedSocket = None
-				continue
-
-			# Check if the connexion is still open
-			while self._receiveData():
-				continue
-
-			# The connexion has been closed -> reset
-			self._connectedSocket[0].close()
-			self._logger.info("%s:%d disconnected", self._connectedSocket[1][0], self._connectedSocket[1][1])
-			self._connectedSocket = None
+				# Looking for a connexion
+				self._logger.debug("Looking for a connexion")
+				self._accept()
+			
+				# Asks the identification to the client
+				if not self.askIdentification():
+					self._connectedSocket[0].close()
+					self._logger.info("The connexion with %s:%d was closed because the client did not match the identification", self._connectedSocket[1][0], self._connectedSocket[1][1])
+					self._connectedSocket = None
+					continue
+			
+			self._receiveData()
+		
+		self._logger.info("Server closed")
 
 
 	def stop(self) -> None:
@@ -282,7 +291,7 @@ class Server(threading.Thread):
 			self._connectedSocket[0].close()
 			self._connectedSocket = None
 
-		self._logger.info("Closing the server.")
+		self._logger.info("Closing the server")
 		self._close()
 
 
@@ -293,10 +302,9 @@ class Server(threading.Thread):
 
 		self._sendCommand(0, 0, 0) # Identification
 		identification = self._receiveData()
-		identification = self._receiveData()
 		
 		# Checks the identification
-		# Has to be defined, here just checks if some data has been added
+		# TODO : Has to be defined, here just checks if some data has been added
 		if identification:
 			return True
 		else:

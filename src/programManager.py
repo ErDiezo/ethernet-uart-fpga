@@ -104,7 +104,7 @@ class ProgramManager(threading.Thread):
 		self._logger = mainLogger
 		
 		self._server = Server(address=address, bufferSize=1024, logger=serverLogger)
-		self._filesManager = FilesManager(logger=filesManagerLogger)
+		self._filesManager = FilesManager(logger=filesManagerLogger, threaded=False)
 
 		self._displayDataRunning = False # The loop for displaying data
 		self._displayDataThread = threading.Thread(target = self._displayData)
@@ -125,17 +125,18 @@ class ProgramManager(threading.Thread):
 			command, *args = userInput.split()
 
 			try:
+				# Runs the function depending on the command
 				if command == "exit":
 					self.stop()
 					continue
 				elif command == "id":
 					self._server.askIdentification()
 				elif command == "load":
-					if len(args) < 2: raise AttributeError("not enough parameter was given")
-					# path = self._filesManager.start()
-					path = args[1]
+					if len(args) == 0:
+						raise AttributeError("not enough parameter was given")
 					info = int(args[0])
 					if info < 0 or info > 7: raise Exception("info has to be in range 0 to 7")
+					path = self._filesManager.start()
 					self._server.sendFile(path, info)
 				elif command == "rstptr":
 					if len(args) == 0: raise AttributeError("no parameter was given")
@@ -153,6 +154,20 @@ class ProgramManager(threading.Thread):
 					self._server.sendCommand(1, 2, 0)
 				elif command == "rstfpga":
 					self._server.sendCommand(1, 2, 1)
+				elif command == "custom":
+					# Sends whatever is specified in parameters
+					if len(args) > 0 and args[0] == "-b":
+						if len(args) > 2:
+							print(f"Warning : ignoring the parameters after {args[1]} because sending bits")
+
+						# Pad the bit string with zeros to make its length a multiple of 8
+						paddedBitString = args[1].ljust((len(args[1]) + 7) // 8 * 8, '0')
+						# Convert the padded bit string to bytes
+						byteArray = bytearray(int(paddedBitString[i:i+8], 2) for i in range(0, len(paddedBitString), 8))
+						
+						self._server._connectedSocket[0].sendall(bytes(byteArray))
+					else:
+						self._server._connectedSocket[0].sendall(" ".join(args).encode())
 				else:
 					print(f"Command \"{command}\" unknown")
 					continue
@@ -199,34 +214,47 @@ class ProgramManager(threading.Thread):
 			info = cmd & 0b1111
 			hw = cmd >> 7
 			cmd = (cmd >> 4) & 0b111
-
-			if displayFunction == print:
-				displayFunction("\nreceived : ", end="")
-
-			if hw:
-				if cmd == 0:
-					displayFunction("status", receivedData[1:])
-				elif cmd == 1:
-					displayFunction("route", info, receivedData[1:])
-				elif cmd == 2:
-					if info :
-						displayFunction("rstfpga", receivedData[1:])
-					else:
-						displayFunction("rstfifo", receivedData[1:])
-				else:
-					self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
-			else:
-				if cmd == 0:
-					displayFunction("id", receivedData[1:])
-				elif cmd == 1:
-					displayFunction("load", info, receivedData[1:])
-				elif cmd == 2:
-					displayFunction("rstptr", info, receivedData[1:])
-				else:
-					self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
 			
 			if displayFunction == print:
-				displayFunction("> ", end="")
+				# To choose which format for displaying, uncomment the wanted section
+
+				# With decode
+				if len(receivedData) > 1:
+					additionnalData = receivedData[1:].decode()
+				else:
+					additionnalData = ""
+					
+				displayFunction("\nreceived : ", end="")
+				# Display the command
+				if hw:
+					if cmd == 0:
+						displayFunction("status", additionnalData)
+					elif cmd == 1:
+						displayFunction("route", info, additionnalData)
+					elif cmd == 2:
+						if info :
+							displayFunction("rstfpga", additionnalData)
+						else:
+							displayFunction("rstfifo", additionnalData)
+					else:
+						self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
+				else:
+					if cmd == 0:
+						displayFunction("id", additionnalData)
+					elif cmd == 1:
+						displayFunction("load", info, additionnalData)
+					elif cmd == 2:
+						displayFunction("rstptr", info, additionnalData)
+					else:
+						self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
+				
+				# # Without decode
+				# displayFunction("\nreceived : ", receivedData)
+
+				# End
+				displayFunction("\n> ", end="")
+			else:
+				displayFunction(receivedData)
 			continue
 
 
