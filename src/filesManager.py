@@ -72,6 +72,7 @@ COLORS = {
 class FilesManager(threading.Thread):
 	"""
     Represents a files manager. Allows to navigate through the tree, and select a file.
+	The parameter thread indicates if the class has to be used threaded or not.
 	"""
 	def __init__(self,
 				threadGroup=None,
@@ -80,10 +81,16 @@ class FilesManager(threading.Thread):
 				threadArgs=list(),
 				threadKwargs=dict(),
 				threadDaemon=None,
+				threaded=True,
 				logger=None):
 		
-		# Initialization of the thread
-		super().__init__(group=threadGroup, target=threadTarget, name=threadName, daemon=threadDaemon)
+		if threaded:
+			# Initialization of the thread
+			super().__init__(group=threadGroup, target=threadTarget, name=threadName, daemon=threadDaemon)
+		else:
+			# Use the class as non threaded
+			self.start = self.run
+
 		self._args = threadArgs
 		self._kwargs = threadKwargs
 

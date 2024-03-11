@@ -17,14 +17,16 @@ Exemples :
 
 ## Fonctions disponbiles et utilisation
 - `id` : demande l'identification du client.
-- `load ptr path` : envoie le fichier `path` au pointeur `ptr`.
+- `load ptr` : ouvre un sélectionneur de fichiers et envoie celui sélectionné au pointeur `ptr`.
 - `rstptr ptr` : reset le pointeur `ptr`. Si `ptr` vaut `all`, reset tous les pointeurs.
 - `status` : demande des informations sur la FPGA.
 - `route ptr` : commande `route` appliquée au pointeur `ptr`.
 - `rstfifo` : reset la FIFO.
 - `rstfpga` : reset la FPGA.
+- `custom ...` : envoie tout ce qui est passé en paramètres. L'option `-b` permet d'indiquer que ce qui est envoyé est une phrase binaire. Exemple : `custom -b 01101001`.
 
 ## Autres informations
 - Les données reçues sont données en temps réel dans le terminal. 
 - Les logs sont écrits dans le fichier daté au jour.
 - Pour obtenir des infos de debug, changer la variable `DEBUG` à `True` dans le fichier `main.py`.
+- Le client doit envoyer `0xff` à la déconnexion.
