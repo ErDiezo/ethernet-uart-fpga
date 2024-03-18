@@ -5,8 +5,8 @@ Ce binôme est chargé de mettre en œuvre un script permettant l’analyse de f
 permettra également le pilotage du logiciel applicatif de la Zedboard (reset des pointeurs mémoires). Ce script pourra être rédigé en langage Python, C ou C++, mais l’usage du langage Python est fortement recommandé ici.
 
 ## Lancement du programme
-Pour lancer le programme, il suffit d'exéctuer le main avec Python (version > 3.8). Pour préciser une adresse IP et un port d'écoute, il suffit des les indiquer à la suite (par défaut 192.168.1.1:16384). Pour spécifier un fichier utilisé pour les *logs*, indiquer le chemin à la suite.  
-__Attention :__ il n'est pas possible de ne préciser uniquement l'adresse IP sans le port.
+Pour lancer le programme, il suffit d'exéctuer le main avec Python (version > 3.8). Pour préciser une adresse IP et un port d'écoute, il suffit des les indiquer à la suite (par défaut **192.168.1.1:16384**). Pour spécifier un fichier utilisé pour les *logs*, indiquer le chemin à la suite.  
+__Attention :__ il n'est pas possible de ne préciser uniquement l'adresse IP sans le port.  
 __Attention 2 :__ le fichier de *logs* doit déjà exister.
 
 Exemples :
@@ -16,6 +16,7 @@ Exemples :
 - `python3.8 main.py 0.0.0.0 1234 /path/to/logs`
 
 ## Fonctions disponbiles et utilisation
+- `exit` : quitte le programme.
 - `id` : demande l'identification du client.
 - `load ptr` : ouvre un sélectionneur de fichiers et envoie celui sélectionné au pointeur `ptr`.
 - `rstptr ptr` : reset le pointeur `ptr`. Si `ptr` vaut `all`, reset tous les pointeurs.

@@ -89,5 +89,3 @@ if __name__ == "__main__":
 
 	with open(logsFile, "a") as f:
 		f.write("\n")
-
-	print("end")
