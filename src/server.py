@@ -123,7 +123,7 @@ class Server(threading.Thread):
 		self._logger.info("Server connexion closed")
     
     
-	def _accept(self) -> None:
+	def _accept(self) -> bool:
 		"""
 		Accepts a connexion.
 		"""
@@ -139,9 +139,11 @@ class Server(threading.Thread):
 				if self._serverOpen:
 					continue
 				else:
-					return
+					return False
 			except OSError:
 				continue
+			else:
+				return True
 
 
 	def _receiveData(self) -> bytes:
@@ -267,7 +269,8 @@ class Server(threading.Thread):
 			if not self._connectedSocket:
 				# Looking for a connexion
 				self._logger.debug("Looking for a connexion")
-				self._accept()
+				if not self._accept():
+					continue
 			
 				# Asks the identification to the client
 				if not self.askIdentification():
