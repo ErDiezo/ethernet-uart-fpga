@@ -45,7 +45,8 @@ logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d
 # To add a MAC address to the list, specify it in binary with all bytes
 # Example : b"\x00\x0a\x35\x00\x01\x02"
 validMacAddresses = [
-	b"\x00\x0a\x35\x00\x01\x02"
+	b"\x00\x0a\x35\x00\x01\x02",
+	b"\x01\x23\x45\x67\x89\xab\xcd"
 ]
 
 
@@ -58,7 +59,7 @@ def testMACAddress(identification) -> bool:
 	"""
 	Check if a MAC address is valid
 	"""
-	return identification in validMacAddresses
+	return identification[1:] in validMacAddresses
 
 # ===========================================================================================
 # ****************************************** CLASS ******************************************
@@ -248,7 +249,7 @@ class Server(threading.Thread):
 			raise socket.error("info has to be an integer between 0 and 15 included")
 		
 		# Setting the data to send, pad with 0s to match the buffer size
-		toSend = bytes([(hw << 7) | (cmd << 4) | info]).ljust(self._bufferSize, '\x00')
+		toSend = bytes([(hw << 7) | (cmd << 4) | info]).ljust(self._bufferSize, b'\x00')
 
 		# Sending the data
 		try:
@@ -259,11 +260,11 @@ class Server(threading.Thread):
 			raise socket.error(e)
 		else:
 			# with data
-			self._logger.info("Command %s sent", toSend) # in hex
+			# self._logger.info("Command %s sent", toSend) # in hex
 			# self._logger.info("Command %s sent", "".join([format(byte, '08b') for byte in toSend])) # in bin
    
 			# without data
-			# self._logger.info("Command %s sent", toSend[0]) # in hex
+			self._logger.info("Command %s sent", toSend[0]) # in hex
 			# self._logger.info("Command %s sent", format(toSend[0], '08b')) # in bin
 	
 
@@ -318,6 +319,7 @@ class Server(threading.Thread):
 				if not self.askIdentification():
 					self._connectedSocket[0].close()
 					self._logger.info("The connexion with %s:%d was closed because the client did not match the identification", self._connectedSocket[1][0], self._connectedSocket[1][1])
+					print("The connexion with {}:{} was closed because the client did not match the identification".format(self._connectedSocket[1][0], self._connectedSocket[1][1]))
 					self._connectedSocket = None
 					continue
 			

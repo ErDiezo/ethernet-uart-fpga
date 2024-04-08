@@ -78,14 +78,14 @@ def displayErrors(receivedData, logger) -> None:
 	cmd = (cmd >> 4) & 0b111
 
 	if len(receivedData) > 1:
-		try:
-			additionnalData = receivedData[1:].decode()
-		except UnicodeDecodeError:
-			additionnalData = receivedData[1:]
+		additionnalData = receivedData[1:]
 	else:
 		additionnalData = ""
 
-	error = int(additionnalData)
+	try:
+		error = int.from_bytes(additionnalData, byteorder="big")
+	except ValueError:
+		error = additionnalData
 		
 	print("\nreceived : ", end="")
 	# Display the command
@@ -113,8 +113,8 @@ def displayErrors(receivedData, logger) -> None:
 
 
 	# End
-	if error: print(" ERROR", error, "\n> ", end="")
-	else: print("\n\n> ", end="")
+	if (hw or cmd) and error: print(" ERROR", error, "\n> ", end="")
+	else: print(" ok\n\n> ", end="")
 
 
 # ===========================================================================================
@@ -313,7 +313,7 @@ class ProgramManager(threading.Thread):
 				# End
 				displayFunction("\n> ", end="")
 			else:
-				displayFunction(receivedData)
+				displayFunction(receivedData, self._logger)
 			continue
 
 
