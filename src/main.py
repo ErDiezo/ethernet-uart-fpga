@@ -46,6 +46,17 @@ logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d
 DEFAULT_ADDR = "192.168.1.1"
 DEFAULT_PORT = 16384
 
+# if the user wants to create their own identificationFunction, this variable has to be set to the function
+identificationFunction = None
+
+
+# ===========================================================================================
+# **************************************** FUNCTIONS ****************************************
+# ===========================================================================================
+# Functions declaration/definition
+
+pass
+
 
 
 
@@ -71,7 +82,6 @@ if __name__ == "__main__":
 		tmpPort = int(sys.argv[2])
 		if isValidIpv4(tmpAddr) and port >= 0 and port < 65535:
 			addr, port = tmpAddr, tmpPort
-			addr, port = tmpAddr, tmpPort
 		else:
 			mainLogger.warning("%s:%d is not a valid addres. Set to default : %s:%d", tmpAddr, tmpPort, addr, port)
 
@@ -79,7 +89,8 @@ if __name__ == "__main__":
 		address=(addr, port),
 		mainLogger=mainLogger,
 		serverLogger=serverLogger,
-		filesManagerLogger=filesManagerLogger
+		filesManagerLogger=filesManagerLogger,
+		identificationFunction=identificationFunction
 	)
 
 	programManager.start()

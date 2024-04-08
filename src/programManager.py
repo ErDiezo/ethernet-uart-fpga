@@ -64,6 +64,57 @@ def isValidIpv4(ip: str) -> bool:
 		return True
 	else:
 		return False
+	
+
+def displayErrors(receivedData, logger) -> None:
+	"""
+	Display errors on the terminal
+	"""
+	# Decode the command
+	if len(receivedData) == 0: return
+	cmd = receivedData[0] # Take the first byte
+	info = cmd & 0b1111
+	hw = cmd >> 7
+	cmd = (cmd >> 4) & 0b111
+
+	if len(receivedData) > 1:
+		try:
+			additionnalData = receivedData[1:].decode()
+		except UnicodeDecodeError:
+			additionnalData = receivedData[1:]
+	else:
+		additionnalData = ""
+
+	error = int(additionnalData)
+		
+	print("\nreceived : ", end="")
+	# Display the command
+	if hw:
+		if cmd == 0:
+			print("status", end="")
+		elif cmd == 1:
+			print("route", info, end="")
+		elif cmd == 2:
+			if info :
+				print("rstfpga", end="")
+			else:
+				print("rstfifo", end="")
+		else:
+			logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
+	else:
+		if cmd == 0:
+			print("id", repr(additionnalData))
+		elif cmd == 1:
+			print("load", info, end="")
+		elif cmd == 2:
+			print("rstptr", info, end="")
+		else:
+			logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
+
+
+	# End
+	if error: print(" ERROR", error, "\n> ", end="")
+	else: print("\n\n> ", end="")
 
 
 # ===========================================================================================
@@ -84,6 +135,7 @@ class ProgramManager(threading.Thread):
 
 	def __init__(self,
 				address,
+				identificationFunction=None,
 				threadGroup=None,
 				threadTarget=None,
 				threadName=None,
@@ -103,7 +155,8 @@ class ProgramManager(threading.Thread):
 		
 		self._logger = mainLogger
 		
-		self._server = Server(address=address, bufferSize=1024, logger=serverLogger)
+		self._server = Server(address=address, bufferSize=512, logger=serverLogger)
+		if identificationFunction: self._server.identificationFunction = identificationFunction
 		self._filesManager = FilesManager(logger=filesManagerLogger, threaded=False)
 
 		self._displayDataRunning = False # The loop for displaying data
@@ -168,7 +221,7 @@ class ProgramManager(threading.Thread):
 						# Convert the padded bit string to bytes
 						byteArray = bytearray(int(paddedBitString[i:i+8], 2) for i in range(0, len(paddedBitString), 8))
 						
-						self._server._connectedSocket[0].sendall(bytes(byteArray))
+						self._server._connectedSocket[0].sendall(bytes(byteArray).ljust(self._server._bufferSize, b'\x00')) # adjust the size to the buffer size
 					else:
 						self._server._connectedSocket[0].sendall(" ".join(args).encode())
 				else:
@@ -197,7 +250,7 @@ class ProgramManager(threading.Thread):
 		self._server.stop()
 
 
-	def _displayData(self, displayFunction = print) -> list:
+	def _displayData(self, displayFunction = displayErrors) -> list:
 		"""
 		Decodes the data and displays it, in an infinite loop.
 		"""
@@ -222,15 +275,13 @@ class ProgramManager(threading.Thread):
 				# To choose which format for displaying, uncomment the wanted section
 
 				# With decode
-				# if len(receivedData) > 1:
-				# 	try:
-				# 		additionnalData = receivedData[1:].decode()
-				# 	except UnicodeDecodeError:
-				# 		additionnalData = receivedData[1:]
-				# else:
-				# 	additionnalData = ""
-				# Without decode
-				additionnalData = receivedData[1:]
+				if len(receivedData) > 1:
+					try:
+						additionnalData = receivedData[1:].decode()
+					except UnicodeDecodeError:
+						additionnalData = receivedData[1:]
+				else:
+					additionnalData = ""
 					
 				displayFunction("\nreceived : ", end="")
 				# Display the command

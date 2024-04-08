@@ -21,7 +21,6 @@ import socket
 import os
 from datetime import datetime
 import errno
-
 import time
 
 
@@ -42,19 +41,29 @@ pass
 logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
 # logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
 
+# All the valid MAC addresses that can communicate with the server
+# To add a MAC address to the list, specify it in binary with all bytes
+# Example : b"\x00\x0a\x35\x00\x01\x02"
+validMacAddresses = [
+	b"\x00\x0a\x35\x00\x01\x02"
+]
 
-def identificationValid(identification) -> bool:
-	# TODO : Has to be defined, here just checks if some data has been added
-	if identification:
-		return True
-	else:
-		return False
 
+# ===========================================================================================
+# **************************************** FUNCTIONS ****************************************
+# ===========================================================================================
+# Functions declaration/definition
+
+def testMACAddress(identification) -> bool:
+	"""
+	Check if a MAC address is valid
+	"""
+	return identification in validMacAddresses
 
 # ===========================================================================================
 # ****************************************** CLASS ******************************************
 # ===========================================================================================
-# Variable declaration/definition
+# Class declaration/definition
 
 class Server(threading.Thread):
 	"""
@@ -72,7 +81,8 @@ class Server(threading.Thread):
 				socketType=socket.SOCK_STREAM,
 				socketProto=-1,
 				socketfileno=None,
-				bufferSize = 1024,
+				bufferSize=512,
+				identificationFunction=testMACAddress,
 				threadGroup=None,
 				threadTarget=None,
 				threadName=None,
@@ -98,6 +108,7 @@ class Server(threading.Thread):
 		self._connectedSocket = None # List : 0 is the socket, 1 the adress, 2 the ID
 		self._logger = logger
 		self._receivedData = list()
+		self.identificationFunction = identificationFunction
     
 
 	def _open(self) -> None:
@@ -247,7 +258,13 @@ class Server(threading.Thread):
 			self._logger.error("Error while sending command (%d %d %d): %s", hw, cmd, info, e)
 			raise socket.error(e)
 		else:
-			self._logger.info("Command %s sent", "".join([format(byte, '08b') for byte in toSend]))
+			# with data
+			self._logger.info("Command %s sent", toSend) # in hex
+			# self._logger.info("Command %s sent", "".join([format(byte, '08b') for byte in toSend])) # in bin
+   
+			# without data
+			# self._logger.info("Command %s sent", toSend[0]) # in hex
+			# self._logger.info("Command %s sent", format(toSend[0], '08b')) # in bin
 	
 
 	def sendFile(self, path : str, info : int) -> None:
@@ -332,7 +349,7 @@ class Server(threading.Thread):
 		identification = self._receiveData(blocking=True)
 		
 		# Checks the identification
-		return identificationValid(identification)
+		return self.identificationFunction(identification)
 
 	
 	def getReceivedData(self) -> bytes:
