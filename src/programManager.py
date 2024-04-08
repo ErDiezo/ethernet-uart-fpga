@@ -122,7 +122,10 @@ class ProgramManager(threading.Thread):
 		while self._running:
 			userInput = input("> ")
 
-			command, *args = userInput.split()
+			try:
+				command, *args = userInput.split()
+			except ValueError:
+				continue
 
 			try:
 				# Runs the function depending on the command
@@ -219,32 +222,37 @@ class ProgramManager(threading.Thread):
 				# To choose which format for displaying, uncomment the wanted section
 
 				# With decode
-				if len(receivedData) > 1:
-					additionnalData = receivedData[1:].decode()
-				else:
-					additionnalData = ""
+				# if len(receivedData) > 1:
+				# 	try:
+				# 		additionnalData = receivedData[1:].decode()
+				# 	except UnicodeDecodeError:
+				# 		additionnalData = receivedData[1:]
+				# else:
+				# 	additionnalData = ""
+				# Without decode
+				additionnalData = receivedData[1:]
 					
 				displayFunction("\nreceived : ", end="")
 				# Display the command
 				if hw:
 					if cmd == 0:
-						displayFunction("status", additionnalData)
+						displayFunction("status", repr(additionnalData))
 					elif cmd == 1:
-						displayFunction("route", info, additionnalData)
+						displayFunction("route", info, repr(additionnalData))
 					elif cmd == 2:
 						if info :
-							displayFunction("rstfpga", additionnalData)
+							displayFunction("rstfpga", repr(additionnalData))
 						else:
-							displayFunction("rstfifo", additionnalData)
+							displayFunction("rstfifo", repr(additionnalData))
 					else:
 						self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
 				else:
 					if cmd == 0:
-						displayFunction("id", additionnalData)
+						displayFunction("id", repr(additionnalData))
 					elif cmd == 1:
-						displayFunction("load", info, additionnalData)
+						displayFunction("load", info, repr(additionnalData))
 					elif cmd == 2:
-						displayFunction("rstptr", info, additionnalData)
+						displayFunction("rstptr", info, repr(additionnalData))
 					else:
 						self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
 				

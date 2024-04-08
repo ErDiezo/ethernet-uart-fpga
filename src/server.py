@@ -20,6 +20,7 @@ import threading
 import socket
 import os
 from datetime import datetime
+import errno
 
 import time
 
@@ -40,6 +41,14 @@ pass
 # Logs
 logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
 # logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
+
+
+def identificationValid(identification) -> bool:
+	# TODO : Has to be defined, here just checks if some data has been added
+	if identification:
+		return True
+	else:
+		return False
 
 
 # ===========================================================================================
@@ -135,6 +144,7 @@ class Server(threading.Thread):
 				conn.setblocking(0)
 				self._connectedSocket = [conn, addr]
 				self._logger.info("Accepted connexion from %s:%d", addr[0], addr[1])
+				print("Accepted connexion from {}:{}".format(addr[0], addr[1]))
 			except socket.timeout:
 				if self._serverOpen:
 					continue
@@ -146,19 +156,36 @@ class Server(threading.Thread):
 				return True
 
 
-	def _receiveData(self) -> bytes:
+	def _receiveData(self, blocking=False) -> bytes:
 		"""
 		Receives data from the client.
 		The received data is stored in the _receivedData variable then returned.
+		If blocking is set to True, will continue to search for data to be received while
+		none has been received yet.
 		"""
-		try:
-			newData = self._connectedSocket[0].recv(self._bufferSize)
-			allData = newData
-			while len(newData) >= self._bufferSize:
+		allData = None
+		while True:
+			try:
 				newData = self._connectedSocket[0].recv(self._bufferSize)
-				allData += newData
-		except BlockingIOError:
-			return None
+				allData = newData
+				while len(newData) >= self._bufferSize:
+					newData = self._connectedSocket[0].recv(self._bufferSize)
+					allData += newData
+			except BlockingIOError as e:
+				if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
+					# No data available to read at the moment
+					if blocking:
+						time.sleep(0.5)
+						continue
+					else:
+						break
+				else:
+					# Other error occurred, handle it appropriately
+					self._logger.error("error while receiving data:", e)
+					return None
+			
+			if allData or not blocking:
+				break
 		
 		if allData == b"\xff":
 			# The connexion has been closed -> reset
@@ -167,6 +194,7 @@ class Server(threading.Thread):
 			self._connectedSocket = None
 		elif allData:
 			self._receivedData.append(allData)
+			self._logger.debug("received : %s", allData)
 		return allData
 	
 
@@ -201,18 +229,15 @@ class Server(threading.Thread):
 		if not isinstance(hw, int) or (hw != 0 and hw != 1):
 			self._logger.error("Error while sending command (%d %d %d) : hw has to be 0 or 1.", hw, cmd, info)
 			raise socket.error("hw has to be 0 or 1")
-			return
 		if not isinstance(cmd, int) or cmd < 0 or cmd > 7:
 			self._logger.error("Error while sending command (%d %d %d) : cmd has to be an integer between 0 and 7 included.", hw, cmd, info)
 			raise socket.error("cmd has to be an integer between 0 and 7 included")
-			return
 		if not isinstance(info, int) or info < 0 or info > 15:
 			self._logger.error("Error while sending command (%d %d %d) : info has to be an integer between 0 and 15 included.", hw, cmd, info)
 			raise socket.error("info has to be an integer between 0 and 15 included")
-			return
 		
-		# Setting the data to send
-		toSend = bytes([(hw << 7) | (cmd << 4) | info])
+		# Setting the data to send, pad with 0s to match the buffer size
+		toSend = bytes([(hw << 7) | (cmd << 4) | info]).ljust(self._bufferSize, '\x00')
 
 		# Sending the data
 		try:
@@ -304,14 +329,10 @@ class Server(threading.Thread):
 		"""
 
 		self._sendCommand(0, 0, 0) # Identification
-		identification = self._receiveData()
+		identification = self._receiveData(blocking=True)
 		
 		# Checks the identification
-		# TODO : Has to be defined, here just checks if some data has been added
-		if identification:
-			return True
-		else:
-			return False
+		return identificationValid(identification)
 
 	
 	def getReceivedData(self) -> bytes:
