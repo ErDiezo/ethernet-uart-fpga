@@ -20,7 +20,7 @@ import threading
 import socket
 import os
 from datetime import datetime
-
+import errno
 import time
 
 
@@ -41,11 +41,30 @@ pass
 logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y_%H:%m:%S'))) # Day + time
 # logsFile = os.path.join("logs", "main_{}.log".format(datetime.now().strftime('%d-%m-%Y'))) # Only day
 
+# All the valid MAC addresses that can communicate with the server
+# To add a MAC address to the list, specify it in binary with all bytes
+# Example : b"\x00\x0a\x35\x00\x01\x02"
+validMacAddresses = [
+	b"\x00\x0a\x35\x00\x01\x02",
+	b"\x01\x23\x45\x67\x89\xab\xcd"
+]
+
+
+# ===========================================================================================
+# **************************************** FUNCTIONS ****************************************
+# ===========================================================================================
+# Functions declaration/definition
+
+def testMACAddress(identification) -> bool:
+	"""
+	Check if a MAC address is valid
+	"""
+	return identification[1:] in validMacAddresses
 
 # ===========================================================================================
 # ****************************************** CLASS ******************************************
 # ===========================================================================================
-# Variable declaration/definition
+# Class declaration/definition
 
 class Server(threading.Thread):
 	"""
@@ -63,7 +82,8 @@ class Server(threading.Thread):
 				socketType=socket.SOCK_STREAM,
 				socketProto=-1,
 				socketfileno=None,
-				bufferSize = 1024,
+				bufferSize=512,
+				identificationFunction=testMACAddress,
 				threadGroup=None,
 				threadTarget=None,
 				threadName=None,
@@ -89,6 +109,7 @@ class Server(threading.Thread):
 		self._connectedSocket = None # List : 0 is the socket, 1 the adress, 2 the ID
 		self._logger = logger
 		self._receivedData = list()
+		self.identificationFunction = identificationFunction
     
 
 	def _open(self) -> None:
@@ -135,6 +156,7 @@ class Server(threading.Thread):
 				conn.setblocking(0)
 				self._connectedSocket = [conn, addr]
 				self._logger.info("Accepted connexion from %s:%d", addr[0], addr[1])
+				print("Accepted connexion from {}:{}".format(addr[0], addr[1]))
 			except socket.timeout:
 				if self._serverOpen:
 					continue
@@ -146,19 +168,36 @@ class Server(threading.Thread):
 				return True
 
 
-	def _receiveData(self) -> bytes:
+	def _receiveData(self, blocking=False) -> bytes:
 		"""
 		Receives data from the client.
 		The received data is stored in the _receivedData variable then returned.
+		If blocking is set to True, will continue to search for data to be received while
+		none has been received yet.
 		"""
-		try:
-			newData = self._connectedSocket[0].recv(self._bufferSize)
-			allData = newData
-			while len(newData) >= self._bufferSize:
+		allData = None
+		while True:
+			try:
 				newData = self._connectedSocket[0].recv(self._bufferSize)
-				allData += newData
-		except BlockingIOError:
-			return None
+				allData = newData
+				while len(newData) >= self._bufferSize:
+					newData = self._connectedSocket[0].recv(self._bufferSize)
+					allData += newData
+			except BlockingIOError as e:
+				if e.errno == errno.EAGAIN or e.errno == errno.EWOULDBLOCK:
+					# No data available to read at the moment
+					if blocking:
+						time.sleep(0.5)
+						continue
+					else:
+						break
+				else:
+					# Other error occurred, handle it appropriately
+					self._logger.error("error while receiving data:", e)
+					return None
+			
+			if allData or not blocking:
+				break
 		
 		if allData == b"\xff":
 			# The connexion has been closed -> reset
@@ -167,6 +206,7 @@ class Server(threading.Thread):
 			self._connectedSocket = None
 		elif allData:
 			self._receivedData.append(allData)
+			self._logger.debug("received : %s", allData)
 		return allData
 	
 
@@ -201,18 +241,15 @@ class Server(threading.Thread):
 		if not isinstance(hw, int) or (hw != 0 and hw != 1):
 			self._logger.error("Error while sending command (%d %d %d) : hw has to be 0 or 1.", hw, cmd, info)
 			raise socket.error("hw has to be 0 or 1")
-			return
 		if not isinstance(cmd, int) or cmd < 0 or cmd > 7:
 			self._logger.error("Error while sending command (%d %d %d) : cmd has to be an integer between 0 and 7 included.", hw, cmd, info)
 			raise socket.error("cmd has to be an integer between 0 and 7 included")
-			return
 		if not isinstance(info, int) or info < 0 or info > 15:
 			self._logger.error("Error while sending command (%d %d %d) : info has to be an integer between 0 and 15 included.", hw, cmd, info)
 			raise socket.error("info has to be an integer between 0 and 15 included")
-			return
 		
-		# Setting the data to send
-		toSend = bytes([(hw << 7) | (cmd << 4) | info])
+		# Setting the data to send, pad with 0s to match the buffer size
+		toSend = bytes([(hw << 7) | (cmd << 4) | info]).ljust(self._bufferSize, b'\x00')
 
 		# Sending the data
 		try:
@@ -222,7 +259,13 @@ class Server(threading.Thread):
 			self._logger.error("Error while sending command (%d %d %d): %s", hw, cmd, info, e)
 			raise socket.error(e)
 		else:
-			self._logger.info("Command %s sent", "".join([format(byte, '08b') for byte in toSend]))
+			# with data
+			# self._logger.info("Command %s sent", toSend) # in hex
+			# self._logger.info("Command %s sent", "".join([format(byte, '08b') for byte in toSend])) # in bin
+   
+			# without data
+			self._logger.info("Command %s sent", toSend[0]) # in hex
+			# self._logger.info("Command %s sent", format(toSend[0], '08b')) # in bin
 	
 
 	def sendFile(self, path : str, info : int) -> None:
@@ -276,6 +319,7 @@ class Server(threading.Thread):
 				if not self.askIdentification():
 					self._connectedSocket[0].close()
 					self._logger.info("The connexion with %s:%d was closed because the client did not match the identification", self._connectedSocket[1][0], self._connectedSocket[1][1])
+					print("The connexion with {}:{} was closed because the client did not match the identification".format(self._connectedSocket[1][0], self._connectedSocket[1][1]))
 					self._connectedSocket = None
 					continue
 			
@@ -304,14 +348,10 @@ class Server(threading.Thread):
 		"""
 
 		self._sendCommand(0, 0, 0) # Identification
-		identification = self._receiveData()
+		identification = self._receiveData(blocking=True)
 		
 		# Checks the identification
-		# TODO : Has to be defined, here just checks if some data has been added
-		if identification:
-			return True
-		else:
-			return False
+		return self.identificationFunction(identification)
 
 	
 	def getReceivedData(self) -> bytes:

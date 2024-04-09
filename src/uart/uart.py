@@ -29,7 +29,7 @@ class UARTReceiver:
 		Starts the receiver.
 		"""
 
-		print("Start of the receiver")
+		print("start of the receiver")
 
 		# get the new file name
 		files = os.listdir(self._dirPath)
@@ -50,7 +50,7 @@ class UARTReceiver:
 		fileName = FILE_NAME_WITHOUT_IDX + str(fileIndex) + FILE_EXT
 
 		self._file = open(os.path.join(self._dirPath, fileName), FILE_OPEN_MODE)
-		print("File opened : ", fileName)
+		print("file opened :", fileName)
 
 		self._running = True
 
@@ -64,7 +64,7 @@ class UARTReceiver:
 		self._running = False
 		self._file.close()
 		self._serialCom.close()
-		print("File closed")
+		print("file closed")
 
 
 	def _uartloop(self) -> None:
@@ -97,9 +97,16 @@ if __name__ == "__main__":
 		port = sys.argv[1]
 		baudrate = sys.argv[2]
 		dirPath = sys.argv[3]
+	else:
+		print("no port detected, using default port /dev/ttyUSB0")
+	
+	print("port :", port, "\nbaudrate :", baudrate, "\ndirectory path :", dirPath)
 
 	receiver = UARTReceiver(port, baudrate, dirPath)
 
 	signal.signal(signal.SIGINT, receiver.stop)
 
-	receiver.start()
+	try:
+		receiver.start()
+	except serial.SerialException:
+		print("cannot open port", port, "\naborting")
