@@ -56,6 +56,12 @@ COLORS = {
 	}
 }
 
+# Display flags
+BOLD 	= 0b00000001
+ALERT 	= 0b00000010
+INDENT 	= 0b00000100
+UPPER	= 0b00001000
+
 
 
 # ===========================================================================================
@@ -279,35 +285,45 @@ class Terminal(threading.Thread):
 		linesCount = 0
 		textToDisplay = []
 
-		for command, text in reversed(self._history):
+		for command, text, flags in reversed(self._history):
 			if text:
 				# Split text into lines if it exceeds the maximum width
 				lines = reversed([text[i:i+maxWidth] for i in range(0, len(text), maxWidth)])
 
 				for line in lines:
-					textToDisplay.append(line)
+					textToDisplay.append((line, flags | INDENT))
 					linesCount += 1
 					if linesCount >= availableLines:
 						break
 			
 			if linesCount >= availableLines:
 				break
-			textToDisplay.append("*BOLD*" + command + ":")
+			textToDisplay.append((command + ":", flags | BOLD | UPPER))
 			linesCount += 1
 			if linesCount >= availableLines:
 				break
 		
 		textToDisplay.reverse()
 		self._stdscr.move(headerLines, 0)
-		for idx, line in enumerate(textToDisplay):
-			if line[:6] == "*BOLD*":
-				self._stdscr.attron(curses.A_BOLD)
-				self._stdscr.addstr(line[6:] + '\n')
-				self._stdscr.attroff(curses.A_BOLD)
-			else:
-				self._stdscr.addstr("    " + line)
-				if idx < len(textToDisplay) - 1:
-					self._stdscr.addch('\n')
+		for idx, (text, flags) in enumerate(textToDisplay):
+			format = COLORS["curses"]["text"]
+
+			# Configure format depending on the flags
+			if flags & ALERT:
+				format = COLORS["curses"]["alert"]
+			if flags & BOLD:
+				format |= curses.A_BOLD
+			if flags & INDENT:
+				text = "    " + text
+			if flags & UPPER:
+				text = text.upper()
+
+			# Display the text
+			self._stdscr.addstr(text, format)
+
+			# Adds a line break for all line except the last one
+			if idx < len(textToDisplay) - 1:
+				self._stdscr.addch('\n')
 
 
 		self._stdscr.refresh()
@@ -323,9 +339,17 @@ class Terminal(threading.Thread):
 
 		# Process the command
 		inputList = self._input.split(' ')
-		self._history.append((inputList[0], ' '.join(inputList[1:]) if len(inputList) > 1 else None))
+		self._history.append((inputList[0], ' '.join(inputList[1:]) if len(inputList) > 1 else None, 0))
 		self._input = ""
 		self._cursorXPos = 0
+	
+
+	def addEntry(self, title: str, text: str, flags: int) -> None:
+		"""
+		Add the title and text to the historic. Title is displayed in uppercase.
+		Flags can be specified using the constant defined in this module
+		"""
+		self._history.append((title, text, flags))
 
 
 	def stop(self) -> None:
@@ -351,23 +375,24 @@ if __name__ == "__main__":
 
 	terminal = Terminal(logger=terminalLogger)
 
-	terminal._history = [
-        ("KEYWORD1", "some text corresponding to keyword 1 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD2", "some text corresponding to keyword 2 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD3", "some text corresponding to keyword 3 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD4", "some text corresponding to keyword 4 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD5", "some text corresponding to keyword 5 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD6", "some text corresponding to keyword 6 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD7", "some text corresponding to keyword 7 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD8", "some text corresponding to keyword 8 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD9", "some text corresponding to keyword 9 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD10", "some text corresponding to keyword 10 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD11", "some text corresponding to keyword 11 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD12", "some text corresponding to keyword 12 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD13", "some text corresponding to keyword 13 that can be longer than the width of the screen so it has to be split in lines"),
-        ("KEYWORD14", "some text corresponding to keyword 14 that can be longer than the width of the screen so it has to be split in lines"),
-        # Add more data as needed
+	history = [
+        ("KEYWORD1", "some text corresponding to keyword 1 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD2", "some text corresponding to keyword 2 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD3", "some text corresponding to keyword 3 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD4", "some text corresponding to keyword 4 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD5", "some text corresponding to keyword 5 that can be longer than the width of the screen so it has to be split in lines", ALERT),
+        ("KEYWORD6", "some text corresponding to keyword 6 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD7", "some text corresponding to keyword 7 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD8", "some text corresponding to keyword 8 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD9", "some text corresponding to keyword 9 that can be longer than the width of the screen so it has to be split in lines", ALERT),
+        ("KEYWORD10", "some text corresponding to keyword 10 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD11", "some text corresponding to keyword 11 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD12", "some text corresponding to keyword 12 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD13", "some text corresponding to keyword 13 that can be longer than the width of the screen so it has to be split in lines", 0),
+        ("KEYWORD14", "some text corresponding to keyword 14 that can be longer than the width of the screen so it has to be split in lines", ALERT),
     ]
+	for h in history:
+		terminal.addEntry(*h)
 	
 	terminal.start()
 	terminal.join()
