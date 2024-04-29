@@ -156,7 +156,6 @@ class Server(threading.Thread):
 				conn.setblocking(0)
 				self._connectedSocket = [conn, addr]
 				self._logger.info("Accepted connexion from %s:%d", addr[0], addr[1])
-				print("Accepted connexion from {}:{}".format(addr[0], addr[1]))
 			except socket.timeout:
 				if self._serverOpen:
 					continue
@@ -175,6 +174,7 @@ class Server(threading.Thread):
 		If blocking is set to True, will continue to search for data to be received while
 		none has been received yet.
 		"""
+		self._logger.debug("_receiveData called")
 		allData = None
 		while True:
 			try:
@@ -319,7 +319,6 @@ class Server(threading.Thread):
 				if not self.askIdentification():
 					self._connectedSocket[0].close()
 					self._logger.info("The connexion with %s:%d was closed because the client did not match the identification", self._connectedSocket[1][0], self._connectedSocket[1][1])
-					print("The connexion with {}:{} was closed because the client did not match the identification".format(self._connectedSocket[1][0], self._connectedSocket[1][1]))
 					self._connectedSocket = None
 					continue
 			

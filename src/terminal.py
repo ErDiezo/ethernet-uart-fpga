@@ -112,7 +112,7 @@ class Terminal(threading.Thread):
 		self._currentDir = os.getcwd()
 		self._offset = 0
 
-		self._connectedClient = "" # The id to the client, shown in the header
+		self.connectedClient = "" # The id to the client, shown in the header
 
 		self._running = False
 		self._input = "" # A string containing the user input
@@ -273,12 +273,12 @@ class Terminal(threading.Thread):
 		# ---------- Header ----------
 		headerLines = 2
 		self._stdscr.attron(curses.A_BOLD)
-		if self._connectedClient:
+		if self.connectedClient:
 			if len(text) < width-11:
 				self._stdscr.addstr(0, (width - len(text)) // 2, text, COLORS["curses"]["text"] | curses.A_BOLD)
-			elif len(self._connectedClient) < width-11:
+			elif len(self.connectedClient) < width-11:
 				# If too large for the screen display only the id
-				self._stdscr.addstr(0, (width - len(self._connectedClient)) // 2, self._connectedClient, COLORS["curses"]["text"] | curses.A_BOLD)
+				self._stdscr.addstr(0, (width - len(self.connectedClient)) // 2, self.connectedClient, COLORS["curses"]["text"] | curses.A_BOLD)
 			else:
 				self._stdscr.addstr(0, (width - 9) // 2, "Connected", COLORS["curses"]["text"] | curses.A_BOLD)
 		else:
@@ -368,6 +368,7 @@ class Terminal(threading.Thread):
 		if inputList[0] == "exit":
 			# End of the program
 			self.stop()
+			self._executeCommandFunction(inputList[0])
 			return
 
 		self._executeCommandFunction(inputList[0], *inputList[1:] if len(inputList) > 1 else ())
@@ -375,12 +376,12 @@ class Terminal(threading.Thread):
 		self._cursorXPos = 0
 	
 
-	def addEntry(self, title: str, *text, flags = 0) -> None:
+	def addEntry(self, title: str, text: str, flags = 0) -> None:
 		"""
 		Add the title and text to the historic. Title is displayed in uppercase.
 		Flags can be specified using the constant defined in this module
 		"""
-		self._history.append((title, *text, flags))
+		self._history.append((title, text, flags))
 		if len(self._history) > 45:
 			self._history.pop(0)
 
@@ -390,7 +391,7 @@ class Terminal(threading.Thread):
 		Stops the files manager.
 		"""
 		if self._running:
-			self._logger("Closing terminal...")
+			self._logger.info("Closing terminal...")
 			self._running = False
 			self._stdscr.clear()
 

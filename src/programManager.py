@@ -32,6 +32,8 @@ from socket import error as socketError
 
 from server import Server
 from filesManager import FilesManager
+import terminal
+from terminal import Terminal
 
 # ===========================================================================================
 # **************************************** VARIABLES ****************************************
@@ -144,7 +146,8 @@ class ProgramManager(threading.Thread):
 				threadDaemon=None,
 				mainLogger=None,
 				serverLogger=None,
-				filesManagerLogger=None
+				filesManagerLogger=None,
+				terminalLogger=None
 			) -> None:
 		
 		super().__init__(group=threadGroup, target=threadTarget, name=threadName, daemon=threadDaemon)
@@ -158,84 +161,25 @@ class ProgramManager(threading.Thread):
 		self._server = Server(address=address, bufferSize=512, logger=serverLogger)
 		if identificationFunction: self._server.identificationFunction = identificationFunction
 		self._filesManager = FilesManager(logger=filesManagerLogger, threaded=False)
+		self._terminal = Terminal(logger=terminalLogger, executeCommandFunction=self._handleCommand)
 
-		self._displayDataRunning = False # The loop for displaying data
-		self._displayDataThread = threading.Thread(target = self._displayData)
+		self._handleReceivedDataRunning = False # The loop for handling received data
 
 		self._running = False # The main loop
    
 
 	def run(self) -> None:
 		self._server.start()
-		self._displayDataThread.start()
+		self._terminal.start()
 
 		self._logger.info("Data manager started")
 		self._running = True
-
-		while self._running:
-			userInput = input("> ")
-
-			try:
-				command, *args = userInput.split()
-			except ValueError:
-				continue
-
-			try:
-				# Runs the function depending on the command
-				if command == "exit":
-					self.stop()
-					continue
-				elif command == "id":
-					self._server.askIdentification()
-				elif command == "load":
-					if len(args) == 0:
-						raise AttributeError("not enough parameter was given")
-					info = int(args[0])
-					if info < 0 or info > 7: raise Exception("info has to be in range 0 to 7")
-					path = self._filesManager.start()
-					self._server.sendFile(path, info)
-				elif command == "rstptr":
-					if len(args) == 0: raise AttributeError("no parameter was given")
-					info = 8 if args[0] == "all" else int(args[0])
-					if info < 0 or info > 8: raise Exception("info has to be in range 0 to 8")
-					self._server.sendCommand(0, 2, info)
-				elif command == "status":
-					self._server.sendCommand(1, 0)
-				elif command == "route":
-					if len(args) == 0: raise AttributeError("no parameter was given")
-					info = int(args[0])
-					if info < 0 or info > 7: raise Exception("info has to be in range 0 to 7")
-					self._server.sendCommand(1, 1, info)
-				elif command == "rstfifo":
-					self._server.sendCommand(1, 2, 0)
-				elif command == "rstfpga":
-					self._server.sendCommand(1, 2, 1)
-				elif command == "custom":
-					# Sends whatever is specified in parameters
-					if len(args) > 0 and args[0] == "-b":
-						if len(args) > 2:
-							print(f"Warning : ignoring the parameters after {args[1]} because sending bits")
-
-						# Pad the bit string with zeros to make its length a multiple of 8
-						paddedBitString = args[1].ljust((len(args[1]) + 7) // 8 * 8, '0')
-						# Convert the padded bit string to bytes
-						byteArray = bytearray(int(paddedBitString[i:i+8], 2) for i in range(0, len(paddedBitString), 8))
-						
-						self._server._connectedSocket[0].sendall(bytes(byteArray).ljust(self._server._bufferSize, b'\x00')) # adjust the size to the buffer size
-					else:
-						self._server._connectedSocket[0].sendall(" ".join(args).encode())
-				else:
-					print(f"Command \"{command}\" unknown")
-					continue
-			except socketError as e:
-				print(f"Could not send the command {command} : {e}")
-			except Exception as e:
-				print(f"Could not send the command {command} : {e}")
-				self._logger.warning("Could not send the command %s %s : %s", command, " ".join(args), e)
-			else:
-				self._logger.debug("%s %s command executed", command, " ".join(args))
 		
 		self._logger.info("Program manager closed")
+
+		self._handleReceivedData()
+
+		self._terminal.join()
 
 
 	def stop(self) -> None:
@@ -245,23 +189,24 @@ class ProgramManager(threading.Thread):
 		self._logger.info("Closing the program manager")
 
 		self._running = False
-		self._displayDataRunning = False
+		self._handleReceivedDataRunning = False
 		self._filesManager.stop()
 		self._server.stop()
+		self._terminal.stop()
 
 
-	def _displayData(self, displayFunction = displayErrors) -> list:
+	def _handleReceivedData(self) -> None:
 		"""
 		Decodes the data and displays it, in an infinite loop.
 		"""
-		self._displayDataRunning = True
+		self._handleReceivedDataRunning = True
 
 		# Infinite loop
-		while self._displayDataRunning:
+		while self._handleReceivedDataRunning:
 			try:
 				receivedData = self._server.getReceivedData().pop(0) # Take the oldest received data
 			except IndexError: # No data received
-				time.sleep(1)
+				time.sleep(0.5)
 				continue
 
 			# Decode the command
@@ -271,50 +216,106 @@ class ProgramManager(threading.Thread):
 			hw = cmd >> 7
 			cmd = (cmd >> 4) & 0b111
 			
-			if displayFunction == print:
-				# To choose which format for displaying, uncomment the wanted section
+			# To choose which format for displaying, uncomment the wanted section
 
-				# With decode
-				if len(receivedData) > 1:
-					try:
-						additionnalData = receivedData[1:].decode()
-					except UnicodeDecodeError:
-						additionnalData = receivedData[1:]
-				else:
-					additionnalData = ""
-					
-				displayFunction("\nreceived : ", end="")
-				# Display the command
-				if hw:
-					if cmd == 0:
-						displayFunction("status", repr(additionnalData))
-					elif cmd == 1:
-						displayFunction("route", info, repr(additionnalData))
-					elif cmd == 2:
-						if info :
-							displayFunction("rstfpga", repr(additionnalData))
-						else:
-							displayFunction("rstfifo", repr(additionnalData))
-					else:
-						self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
-				else:
-					if cmd == 0:
-						displayFunction("id", repr(additionnalData))
-					elif cmd == 1:
-						displayFunction("load", info, repr(additionnalData))
-					elif cmd == 2:
-						displayFunction("rstptr", info, repr(additionnalData))
-					else:
-						self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
-				
-				# # Without decode
-				# displayFunction("\nreceived : ", receivedData)
-
-				# End
-				displayFunction("\n> ", end="")
+			# With decode
+			if len(receivedData) > 1:
+				try:
+					additionnalData = receivedData[1:].decode()
+				except UnicodeDecodeError:
+					additionnalData = receivedData[1:]
 			else:
-				displayFunction(receivedData, self._logger)
-			continue
+				additionnalData = ""
+
+			# Display the command
+			if hw:
+				if cmd == 0:
+					self._terminal.addEntry("status", repr(additionnalData), flags=terminal.RECEIVED)
+				elif cmd == 1:
+					self._terminal.addEntry("route", repr(info) + repr(additionnalData), flags=terminal.RECEIVED)
+				elif cmd == 2:
+					if info :
+						self._terminal.addEntry("rstfpga", repr(additionnalData), flags=terminal.RECEIVED)
+					else:
+						self._terminal.addEntry("rstfifo", repr(additionnalData), flags=terminal.RECEIVED)
+				else:
+					self._terminal.addEntry("received data", "the command hw:{} cmd:{} could not be found.".format(hw, cmd), flags=terminal.ALERT)
+					self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
+			else:
+				if cmd == 0:
+					self._terminal.addEntry("id", repr(additionnalData), flags=terminal.RECEIVED)
+					self._terminal.connectedClient = repr(additionnalData)
+				elif cmd == 1:
+					self._terminal.addEntry("load", repr(info) + repr(additionnalData), flags=terminal.RECEIVED)
+				elif cmd == 2:
+					self._terminal.addEntry("rstptr", repr(info) + repr(additionnalData), flags=terminal.RECEIVED)
+				else:
+					self._terminal.addEntry("received data", "the command hw:{} cmd:{} could not be found.".format(hw, cmd), flags=terminal.ALERT)
+					self._logger.warning("The command hw:{} cmd:{} could not be found.".format(hw, cmd))
+			
+			# # Without decode
+			# self._terminal.addEntry("received (plain)", receivedData, flags=terminal.RECEIVED)
+
+
+	def _handleCommand(self, command: str, *data) -> None:
+		"""
+		Handle a new command entry
+		"""
+		try:
+			# Runs the function depending on the command
+			if command == "exit":
+				self.stop()
+				return
+			elif command == "id":
+				self._server.askIdentification()
+			elif command == "load":
+				if len(data) == 0:
+					raise AttributeError("not enough parameter was given")
+				info = int(data[0])
+				if info < 0 or info > 7: raise Exception("info has to be in range 0 to 7")
+				path = self._filesManager.start()
+				self._server.sendFile(path, info)
+			elif command == "rstptr":
+				if len(data) == 0: raise AttributeError("no parameter was given")
+				info = 8 if data[0] == "all" else int(data[0])
+				if info < 0 or info > 8: raise Exception("info has to be in range 0 to 8")
+				self._server.sendCommand(0, 2, info)
+			elif command == "status":
+				self._server.sendCommand(1, 0)
+			elif command == "route":
+				if len(data) == 0: raise AttributeError("no parameter was given")
+				info = int(data[0])
+				if info < 0 or info > 7: raise Exception("info has to be in range 0 to 7")
+				self._server.sendCommand(1, 1, info)
+			elif command == "rstfifo":
+				self._server.sendCommand(1, 2, 0)
+			elif command == "rstfpga":
+				self._server.sendCommand(1, 2, 1)
+			elif command == "custom":
+				# Sends whatever is specified in parameters
+				if len(data) > 0 and data[0] == "-b":
+					if len(data) > 2:
+						self._terminal.addEntry(command, f"warning : ignoring the parameters after {data[1]} because sending bits", flags=terminal.BOLD)
+
+					# Pad the bit string with zeros to make its length a multiple of 8
+					paddedBitString = data[1].ljust((len(data[1]) + 7) // 8 * 8, '0')
+					# Convert the padded bit string to bytes
+					byteArray = bytearray(int(paddedBitString[i:i+8], 2) for i in range(0, len(paddedBitString), 8))
+					
+					self._server._connectedSocket[0].sendall(bytes(byteArray).ljust(self._server._bufferSize, b'\x00')) # adjust the size to the buffer size
+				else:
+					self._server._connectedSocket[0].sendall(" ".join(data).encode())
+			else:
+				self._terminal.addEntry(command, "command unknown", flags=terminal.ALERT)
+				return
+		except Exception as e:
+			self._terminal.addEntry(command, "could not send the command: {}".format(e), flags=terminal.ALERT)
+			self._logger.warning("Could not send the command %s %s : %s", command, " ".join(data), e)
+		else:
+			self._terminal.addEntry(command, "executed" + '' if not len(data) else " with data: " + " ".join(data), flags=terminal.SENT)
+			self._logger.debug("%s %s command executed", command, " ".join(data))
+
+
 
 
 
