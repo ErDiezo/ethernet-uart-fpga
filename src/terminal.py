@@ -109,7 +109,6 @@ class Terminal(threading.Thread):
 
 		# Initialization of the values used for the curses environment
 		self._stdscr = None
-		self._currentDir = os.getcwd()
 		self._offset = 0
 
 		self.connectedClient = "" # The id to the client, shown in the header
@@ -120,8 +119,6 @@ class Terminal(threading.Thread):
 
 		self._history = [] 	# A list that contains tuples of the command and the associated data:
 							# Example : [(command1, data1), (command2, data2)]
-
-		self.commands = [] # A list of all commands that have to be sent
 
 		if (executeCommandFunction):
 			self._executeCommandFunction = executeCommandFunction
@@ -273,7 +270,9 @@ class Terminal(threading.Thread):
 		# ---------- Header ----------
 		headerLines = 2
 		self._stdscr.attron(curses.A_BOLD)
+
 		if self.connectedClient:
+			text = "Connected: {}".format(self.connectedClient)
 			if len(text) < width-11:
 				self._stdscr.addstr(0, (width - len(text)) // 2, text, COLORS["curses"]["text"] | curses.A_BOLD)
 			elif len(self.connectedClient) < width-11:

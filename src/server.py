@@ -220,7 +220,7 @@ class Server(threading.Thread):
 
 		# To send data use the sendData method
 		if hw == 0 and cmd == 1:
-			self._logger.warning("To send data use the sendData method")
+			self._logger.warning("To send a file use the sendFile method")
 			return
 
 		self._sendCommand(hw, cmd, info)

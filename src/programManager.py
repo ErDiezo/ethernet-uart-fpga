@@ -174,12 +174,12 @@ class ProgramManager(threading.Thread):
 
 		self._logger.info("Data manager started")
 		self._running = True
-		
-		self._logger.info("Program manager closed")
 
 		self._handleReceivedData()
 
 		self._terminal.join()
+		
+		self._logger.info("Program manager closed")
 
 
 	def stop(self) -> None:
@@ -267,7 +267,9 @@ class ProgramManager(threading.Thread):
 				self.stop()
 				return
 			elif command == "id":
-				self._server.askIdentification()
+				id = self._server.askIdentification()
+				if not id:
+					raise ConnectionError("connexion refused : connexion not valid")
 			elif command == "load":
 				if len(data) == 0:
 					raise AttributeError("not enough parameter was given")
