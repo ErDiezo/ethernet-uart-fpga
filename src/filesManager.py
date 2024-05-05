@@ -107,7 +107,6 @@ class FilesManager(threading.Thread):
 		self._selectedIndex = 0
 		self._offset = 0
 		self._availableLines = 0
-		self._height, self._width = 0, 0
 		self._chosenFile = None
 
 		self._running = False
@@ -372,6 +371,7 @@ class FilesManager(threading.Thread):
 		"""
 		Changes the working directory.
 		"""
+		self._stdscr.clear()
 		self._currentDir = dirPath
 		self._selectedIndex = 0
 		self._offset = 0

@@ -65,6 +65,7 @@ if __name__ == "__main__":
 	if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]):
 		logsFile = sys.argv[1]
 
+	if not os.path.exists(os.path.dirname(logsFile)): os.makedirs(os.path.dirname(logsFile))
 	handler = logging.FileHandler(logsFile)
 	handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s (%(name)s): %(message)s", datefmt="%H:%M:%S"))
 	handler.setLevel(logging.DEBUG if DEBUG else logging.INFO)
